@@ -1,0 +1,21 @@
+# État local / éditeur
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+.mirror-metadata.json
+
+# Dépendances / exécution
+node_modules/
+__pycache__/
+.venv/
+venv/
+*.log
+
+# Secrets — ne jamais committer
+.env
+.env.*
+!.env.example
+*.pem
+*.key

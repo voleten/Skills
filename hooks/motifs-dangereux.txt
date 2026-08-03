@@ -1,0 +1,66 @@
+# Garde-fou global des commandes shell — liste de refus.
+# Une regex POSIX-ERE (grep -E) par ligne. Lignes vides et commentaires « # » ignorés.
+# Partagée par TOUS les agents : Cursor, Claude Code, Codex, OpenCode, Pi, Hermes, Grok.
+# Éditez ce fichier pour l'ajuster ; les changements s'appliquent immédiatement (aucun redémarrage).
+# Les adaptateurs Pi/OpenCode/Hermes convertissent automatiquement [:space:] en \s.
+#
+# RÈGLE DE CONCEPTION : ne bloquer que l'irréversible et le catastrophique
+# (perte de données, effacement disque, suppression de dépôt, exfiltration de jeton).
+# Le destructeur-mais-récupérable reste AUTORISÉ (`rm -rf node_modules`,
+# `git clean -fdx`, `docker system prune`) — sur-bloquer rend les agents inutiles.
+
+# 1. rm visant la racine, tout le dossier personnel, ou toute l'arborescence /Users
+(^|[;&|[:space:]])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*["']?/["']?[[:space:]]*($|[;&|])
+(^|[;&|[:space:]])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*["']?/\*
+(^|[;&|[:space:]])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*["']?(~|\$HOME|\$\{HOME\})/?["']?[[:space:]]*($|[;&|])
+(^|[;&|[:space:]])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*["']?(~|\$HOME|\$\{HOME\})/\*
+(^|[;&|[:space:]])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*["']?/Users(/[^/[:space:]"']+)?/?["']?[[:space:]]*($|[;&|])
+--no-preserve-root
+
+# 1b. rm visant un répertoire système.
+# Couvre la racine système et un niveau en dessous : `rm -rf /usr`, `rm -rf /etc/ssh`.
+# Deux niveaux ou plus restent autorisés (`rm -rf /var/folders/T/mon-tmp`).
+(^|[;&|[:space:]])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*["']?/(usr|etc|var|bin|sbin|lib|lib64|opt|boot|srv|proc|sys|System|Applications|Library|private|Volumes)(/[^/[:space:]"']+)?/?["']?[[:space:]]*($|[;&|])
+(^|[;&|[:space:]])rm[[:space:]]+((-[a-zA-Z]+|--[a-z-]+)[[:space:]]+)*["']?/(usr|etc|var|bin|sbin|lib|lib64|opt|boot|srv|System|Applications|Library|private|Volumes)/\*
+
+# 2. destructeurs de disque (écriture sur disque brut, formatage, effacement)
+(^|[;&|[:space:]])dd[[:space:]][^;&|]*of=["']?/dev/
+(^|[;&|[:space:]])dd[[:space:]][^;&|]*of=["']?/(usr|etc|boot|System)/
+>[[:space:]]*/dev/(r?disk|sd[a-z]|nvme|hd[a-z]|vd[a-z]|mmcblk)
+(^|[;&|[:space:]])mkfs(\.[A-Za-z0-9]+)?([[:space:]]|$)
+(^|[;&|[:space:]])shred[[:space:]][^;&|]*/dev/
+(^|[;&|[:space:]])diskutil[[:space:]]+(erase[A-Za-z]*|partitionDisk|zeroDisk|secureErase|apfs[[:space:]]+(delete|erase)[A-Za-z]*)
+
+# 3. suppression avec les droits administrateur
+(^|[;&|[:space:]])sudo[[:space:]]+(-[a-zA-Z]+([[:space:]]+[^[:space:];&|]+)?[[:space:]]+)*rm([[:space:]]|$)
+
+# 4. fork bomb (fige la machine)
+:\(\)[[:space:]]*\{[[:space:]]*:[[:space:]]*\|[[:space:]]*:[[:space:]]*&[[:space:]]*\}[[:space:]]*;[[:space:]]*:
+
+# 5. rediriger Internet directement dans un shell
+(^|[;&|[:space:]])(curl|wget)[[:space:]][^;&|]*\|[[:space:]]*(sudo[[:space:]]+)?(ba|z|da|k|fi)?sh([[:space:]]|$)
+
+# 6. réécrire l'historique git distant (--force-with-lease reste autorisé)
+(^|[;&|[:space:]])git[[:space:]]+push[^;&|]*[[:space:]](-f|--force)([[:space:]]|$)
+(^|[;&|[:space:]])git[[:space:]]+push[^;&|]*[[:space:]]\+[A-Za-z0-9._/-]
+
+# 6b. supprimer branches/tags distants (git push --delete, -d, ou refspec « :branche »)
+(^|[;&|[:space:]])git[[:space:]]+push[^;&|]*[[:space:]](--delete|-d)([[:space:]]|$)
+(^|[;&|[:space:]])git[[:space:]]+push[^;&|]*[[:space:]]:[A-Za-z0-9._/-]
+
+# 7. casser les permissions/propriétaires de tout le système
+(^|[;&|[:space:]])chmod[[:space:]][^;&|]*777[[:space:]]+["']?/["']?[[:space:]]*($|[;&|])
+(^|[;&|[:space:]])chmod[[:space:]]+-R[^;&|]*[[:space:]]+["']?/(usr|etc|var|bin|sbin|lib|System|Library)([[:space:]]|/|$)
+(^|[;&|[:space:]])chown[[:space:]]+-R[^;&|]*[[:space:]]+/["']?[[:space:]]*($|[;&|])
+
+# 8. détruire le filet de sécurité du reflog (rend les réécritures locales irrécupérables)
+(^|[;&|[:space:]])git[[:space:]]+reflog[[:space:]]+expire[^;&|]*--expire(-unreachable)?(=|[[:space:]]+)now
+(^|[;&|[:space:]])git[[:space:]]+gc[^;&|]*--prune(=|[[:space:]]+)(now|all)
+
+# 9. GitHub CLI (gh) : destruction irréversible ou au niveau du compte + exfiltration de jeton
+(^|[;&|[:space:]])gh[[:space:]]+repo[[:space:]]+delete([[:space:]]|$)
+(^|[;&|[:space:]])gh[[:space:]]+release[[:space:]]+delete([[:space:]]|$)
+(^|[;&|[:space:]])gh[[:space:]]+(secret|ssh-key|gpg-key)[[:space:]]+delete([[:space:]]|$)
+(^|[;&|[:space:]])gh[[:space:]]+api[[:space:]][^;&|]*(-X|--method)(=|[[:space:]]+)(DELETE|delete)
+(^|[;&|[:space:]])gh[[:space:]]+repo[[:space:]]+edit[^;&|]*--visibility(=|[[:space:]]+)public
+(^|[;&|[:space:]])gh[[:space:]]+auth[[:space:]]+token([[:space:]]|$)
